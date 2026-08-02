@@ -62,33 +62,37 @@ P_eb_simulada = np.zeros(len(EbN0_dB))
 P_ep_simulada = np.zeros(len(EbN0_dB))
 
 for i, ebfn0_actual in enumerate(EbfN0):
-    # N0 = Densidad espectral de ruido deseado
     N0 = 1 / ebfn0_actual
-    
-    # noise = Ruido AWGN
     noise = np.sqrt(N0 / 2) * np.random.normal(0, 1, s.shape)
-    
-    # r = Palabra de código recibida
     r = s + noise
-    
-    # vr = Palabra de código demodulada (detección dura)
     vr = (r > 0).astype(int)
     
-    # Cálculo de Síndrome (Matricial) - En un detector puro sirve para pedir retransmisión
-    # S = np.dot(vr, H_T) % 2
+    # Cálculo de Síndrome (Matricial)
+    S = np.dot(vr, H_T) % 2
     
-    # Decodificador: Detección (SIN CORRECCIÓN)
-    # Como no corregimos, simplemente tomamos los primeros k bits de la palabra recibida
-    u_recibida = vr[:, :k]
+    # FILTRADO DE DETECTOR: Máscara booleana para descartar síndromes no nulos
+    indices_aceptados = ~np.any(S, axis=1)
     
-    # Extracción de los bits de información y conteo de errores crudos del canal
-    errores_bit = np.sum(u != u_recibida)
-    errores_palabra = np.sum(np.sum(u != u_recibida, axis=1) > 0)
+    # Extraemos solo las palabras que pasaron la validación
+    u_aceptadas = u[indices_aceptados]
+    vr_aceptadas = vr[indices_aceptados]
     
-    P_eb_simulada[i] = errores_bit / M_bits
-    P_ep_simulada[i] = errores_palabra / M_palabras
+    palabras_validas = len(u_aceptadas)
     
-    print(f"  Eb/N0 = {EbN0_dB[i]} dB -> Peb: {P_eb_simulada[i]:.5f} | Pep: {P_ep_simulada[i]:.5f}")
+    if palabras_validas > 0:
+        u_recibida_aceptada = vr_aceptadas[:, :k]
+        
+        errores_bit = np.sum(u_aceptadas != u_recibida_aceptada)
+        errores_palabra = np.sum(np.sum(u_aceptadas != u_recibida_aceptada, axis=1) > 0)
+        
+        # Usamos solo lo que el detector dejó pasar
+        P_eb_simulada[i] = errores_bit / (palabras_validas * k)
+        P_ep_simulada[i] = errores_palabra / palabras_validas
+    else:
+        P_eb_simulada[i] = 0
+        P_ep_simulada[i] = 0
+        
+    print(f"  Eb/N0 = {EbN0_dB[i]} dB -> Peb: {P_eb_simulada[i]:.6f} | Pep: {P_ep_simulada[i]:.6f} (Palabras válidas: {palabras_validas}/{M_palabras})")
 
 # =================================================================
 # 5. CÁLCULO TEÓRICO Y GRÁFICOS
